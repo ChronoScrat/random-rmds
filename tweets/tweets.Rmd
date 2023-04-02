@@ -1,0 +1,289 @@
+---
+title: "Uma análise dos meus tweets"
+author: "Nathanael Rolim"
+date: "2023-03-20"
+output: 
+  html_notebook:
+    code_folding: hide
+editor_options: 
+    chunk_output_type: inline
+---
+
+   
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning=FALSE,
+                      message = FALSE,
+                      error = FALSE)
+Sys.setlocale("LC_TIME", "English")
+
+# Libraries
+
+library(data.table, quietly = TRUE)
+library(dplyr, quietly = TRUE)
+library(dtplyr, quietly = TRUE)
+library(ggplot2, quietly = TRUE)
+```
+
+Já faz um tempo que eu queria trabalhar em um projeto do R que envolvesse tweets. Honestamente, eu acho fascinante o número de informações que uma rede de microblog limitada a 240 caracteres (não mais!) pode trazer.
+
+Infelizmente, acessar essa informação sempre foi um parto. O Twitter sempre teve um processo complicado para liberar o acesso ao API, e mesmo para seus próprios tweets, o usuário está normalmente limitado aos últimos sete dias, caso ele não tivesse um plano pago ou uma conta acadêmica (eu jamais pagaria pelo twitter, e recusaram minha conta acadêmica!).
+
+A situação agora piorou com o E\*on Mu\*k anunciando que cobrará horrosos USD 400k para o acesso à API do Twitter com capacidade de leitura. No entanto, graças as leis de proteção de dados internacionais, uma alternativa - ao menos para os meus tweets - me restava: [uma cópia de todos os meus dados](https://twitter.com/settings/download_your_data).
+
+Essa é uma solução bem mediana, na real, mas que abre um caminho de possibilidades. O arquivo final normalmente é gerado em até 48 horas, mas diferente de um API, ele não é dinâmico. Ainda assim, ele te trás **muitas** informações, como: todos os seus tweets e tweets deletados, todos os seus likes, suas mídias, suas conversas etc.
+
+Como eu não tinha nada melhor pra fazer com o meu tempo, apresento:
+
+# Análise Mais Inútil Possível dos Meus Tweets
+
+(Por favor, note: isso é pouquíssimo reproduzível. O arquivo zipado que o Twitter gera trás as informações em arquivos JavaScript, que eu converti manualmente para JSON. Além disso, eu estou usando apenas uma seleção destes arquivos para facilitar minha vida. Existe uma forma de fazer isso programaticamente, mas honestamente *I couldn't be bothered*.)
+
+```{r tweet-data}
+tweets <- jsonlite::read_json(path = "data/tweets.json", simplifyVector = TRUE)
+tweets <- data.table::data.table(tweets) # Converte para data.table
+tweets <- tweets %>%
+  mutate(tweet.created_at = lubridate::as_datetime(tweet.created_at, format = "%a %b %d %H:%M:%S %z %Y"))
+```
+
+ 
+
+A primeira coisa que eu fiz foi importar meus tweets. Como eles estão em formato JSON, as coisas ficam um pouco complicadas devido a forma como R implementa listas e afins. A melhor forma de trablhar com esse volume de dados, assim, é converter ele direto para uma `data.table`. Ela é Otimizada®.
+
+Tendo nossos tweets em mãos, podemos finalmente começar nossas análises. A primeira coisa que eu posso fazer é ver quantos tweets eu fiz nesse período.
+
+```{r variables-1}
+n_tweets <- tweets %>% nrow()
+
+# Um pouco de trabalho para o primeiro tweet
+
+## Data
+first_tweet_dt <- tweets %>%
+  arrange(tweet.created_at) %>%
+  select(tweet.created_at) %>% head(n = 1) %>%
+  strtoi() %>%
+  lubridate::as_datetime()
+
+## ID
+first_tweet_id <- tweets %>%
+  arrange(tweet.created_at) %>%
+  select(tweet.id_str) %>% head(n = 1) %>%
+  as.character(.)
+
+## ID
+
+# E para o mais recente
+## Data
+latest_tweet_dt <- tweets %>%
+  arrange(desc(tweet.created_at)) %>%
+  select(tweet.created_at) %>% head(n = 1) %>%
+  strtoi() %>%
+  lubridate::as_datetime()
+
+## ID
+latest_tweet_id <- tweets %>%
+  arrange(desc(tweet.created_at)) %>%
+  select(tweet.id) %>% head(n = 1) %>%
+  as.character(.)
+```
+
+ 
+
+Intankavelmente, eu postei `r format(n_tweets, big.mark=".")` tweets nesse período todo. Meu primeiro tweet foi feito no dia `r format(first_tweet_dt, format = "%d/%m/%Y")`; o último tweet nessa base foi feito no dia `r format(latest_tweet_dt, format = "%d/%m/%Y")`. 
+
+## Uau! Você não cala a boca!
+
+Tendo o histórico dos meus tweets, podemos finalmente começar a entender algumas coisas interessantes sobre meu padrão de postagem. O mais tradicional de tudo é a linha do tempo!
+
+```{r timeline, out.width="200%"}
+tmp1 <- tweets %>%
+  mutate(tweet.created_at = lubridate::as_date(tweet.created_at)) %>%
+  group_by(tweet.created_at) %>%
+  summarise(num = n()) %>%
+  arrange(tweet.created_at)
+
+ggplot(data = tmp1, mapping = aes(x = tweet.created_at, y = num)) +
+  geom_line()+
+  scale_x_date(date_labels = "%b-%y", date_breaks = "6 months")+
+  xlab("Mês") + ylab("Número de Tweets") +
+  labs(title = "Número de Tweets por Dia") +
+  theme_minimal()
+```
+
+Mesmo sendo horroroso, esse gráfico apresenta uma tendência bem interessante: apesar de meu início nessa rede social infernal ter ocorrido em novembro de 2016, eu subutilizei minha capacidade de reclamar até meados de 2019, quando eu finalmente comecei a me expressar mais nesse pássaro maldito.
+
+Alguns pontos são interessantes:
+
+1.  Em Fevereiro de 2018, eu comecei a cursar Relações Internacionais na USP. Dá pra se notar no gráfico que alguma atividade, mesmo que pequena, começa a acontecer no período.
+2.  Em 2019, eu estava no meu segundo ano da faculdade. Esse ano foi marcado por algumas matérias bem estressantes - em especial no segundo semestre. Foi também o ano em que eu fui monitor de Estatística Aplicada. Basta dizer que não foi uma experiência salubre.
+3.  No começo de 2020, a pandemia de Covid estourou. O isolamento social começou e eu, assim como milhares de outras almas perdidas, comecei a usar mais intensamente o Twitter. Juntaram-se, nesse período, reclamações diversas, comentário sobre a CPI da pandemia, análise do BBB, live-tweeting de Amor de Mãe, entre outros!
+4.  Por fim, 2022 foi o ano de "retorno" a normalidade, o que incluiu uma Copa do Mundo e uma Eleição histórica.
+
+Na verdade, a eleição é responsável por esse pico imenso no gráfico. Meus récordes em número de tweets por dia são: *02 de outubro de 2022*, dia do meu aniversário e data do primeiro turno da eleição pra presidente, com 116 tweets; e *30 de outubro de 2022*, data do segundo turno da eleição, com intankáveis **150 tuites**.
+
+Quando observamos essa relação no agregado mensal, no entanto, isso muda um pouco:
+
+```{r timeline-monthly, message=FALSE, warning=FALSE,}
+tweets %>%
+  mutate(tweet.created_at = lubridate::as_date(tweet.created_at),
+         mes_ano = format(tweet.created_at, format = "%Y-%m-01"),
+         mes_ano = lubridate::ymd(mes_ano)) %>%
+  group_by(mes_ano) %>%
+  summarise(num = n()) %>%
+  arrange(mes_ano) %>%
+  ggplot(data = ., mapping = aes(x = mes_ano, y = num)) +
+  geom_bar(stat = "identity")+
+  scale_x_date(date_labels = "%b-%y", date_breaks = "6 months")+
+  scale_y_continuous(labels = scales::comma) +
+  xlab("Mês") + ylab("Número de Tweets") +
+  labs(title = "Número de Tweets Agregado por Mês") +
+  theme_minimal()
+```
+
+ 
+
+Embora Outubro de 2022 ainda se destaque no número de tweets, o principal destaque é *Julho de 2021*. Eu não me lembro o que aconteceu nesse período. O terceiro lugar fica com *Abril de 2021*, mês do episódio final de **Amor de Mãe**, com um dos maiores live-tweetings da história!
+
+Outro ponto interessantíssimo (inútil) de se entender sobre meu padrão de postagem é *quando* eu posto. Normalmente, se esperaria que meus tuintes estivessem concentrados fora do horário das 1h-7h, que é quando estou dormindo, e mais presentes em dias de semana (porque é quando eu mais reclamo).
+
+```{r tweet-heatmap}
+tweets %>%
+  mutate(day_week = format(tweet.created_at, format = "%a"),
+         hour = lubridate::hour(lubridate::with_tz(tweet.created_at, tz = "America/Sao_Paulo"))) %>%
+  group_by(day_week,hour) %>%
+  summarise(num = n()) %>% ungroup() %>%
+  tidyr::complete(hour,day_week) %>%
+  mutate(num = ifelse(is.na(num),0,num)) %>%
+  ggplot(data = ., mapping = aes(x = day_week, y = hour, fill = num)) +
+  geom_tile() +
+  xlab("Dia da Semana") + ylab("Hora") +
+  labs(title = "Número de Tweets por Hora e Dia da Semana") +
+  scale_fill_viridis_c() +
+  theme_minimal()
+```
+
+E no geral, é possível notar que eu estava certo! A maioria dos meus posts estão concentrados entre as 17h - 23h, que são horários em que (1) eu estava estudando durante a pandemia, e (2) já estou em casa depois do trabalho. Um detalhe legal é que Segunda, Terça e Quarta são os principais dias de posts - convergindo com os PIORES dias que existem. Que curioso!
+
+Por fim, uma coisa muito interessante de se avaliar é o **tamanho** dos meus Tuintes. Durante a maior parte de sua existência, o Twitter limitou seus posts a 180 caracteres, e somente em novembro de 2017 esse limite foi aumentado para o atual 240. Embora isso não tenha [mudado muito o tamanho dos tweets](https://techcrunch.com/2018/10/30/twitters-doubling-of-character-count-from-140-to-280-had-little-impact-on-length-of-tweets/) de uma forma geral, aparentemente.
+
+Mas como isso se manifesta nos meus tweets? Vamos ver:
+
+```{r large-twintes}
+tweets %>%
+  tidyr::unnest(tweet.display_text_range) %>%
+  filter(tweet.display_text_range != 0) %>%
+  mutate(era = ifelse(lubridate::as_date(tweet.created_at) <= lubridate::ymd("2017-11-07"),"Limite Anterior","Limite Atual"),
+         tweet.display_text_range = strtoi(tweet.display_text_range),
+         cat = case_when(
+           tweet.display_text_range < 30 ~ "< 30",
+           (tweet.display_text_range >= 30) & (tweet.display_text_range < 50) ~ "[30;50[",
+           (tweet.display_text_range >= 50) & (tweet.display_text_range < 100) ~ "[50;100[",
+           (tweet.display_text_range >= 100) & (tweet.display_text_range < 150) ~ "[100;150[",
+           (tweet.display_text_range >= 150) & (tweet.display_text_range < 180) ~ "[150;180[",
+           (tweet.display_text_range >= 180) & (tweet.display_text_range < 210) ~ "[180;210[",
+           (tweet.display_text_range >= 210) & (tweet.display_text_range < 240) ~ "[210;240[",
+           tweet.display_text_range >= 240 ~ "240 >"
+         ),
+         cat = forcats::fct_relevel(cat,"< 30","[30;50[","[100;150[","[150;180[",
+                                    "[180;210[","[210;240[","240 >")) %>%
+  group_by(era, cat) %>%
+  summarise(num = n()) %>%
+  mutate(freq = num/sum(num)) %>%
+  ggplot(data = ., mapping = aes(x = era, y = freq, fill = cat)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_y_continuous(labels = scales::percent) +
+  xlab("Momento") + ylab("Porcentagem") +
+  labs(title = "Tamanho médio dos meus tweets") +
+  theme_minimal()
+```
+É importante notar que esses valores são *aproximados*, porque infelizmente o Twitter adiciona na contagem oficial coisas como links, mídia e menções - que normalmente são excluídos do limite de postagem.
+
+Ainda assim é possível notar que a grande maioria dos meus posts têm entre 50 e 100 caracteres, e o aumento do limite não mudou muito isso. Em geral, o aumento do segmento entre 100 e 150 está mais associado aos meus posts mais frequentes do que a uma mudança no tamanho em si.
+
+
+Por fim, uma coisa interessante sobre o meu padrão de postagem é entender o que não é post meu. Mais precisamente, é interessante se entender quantos dos meus tweets são, na verdade, retweets. E aqui está uma coisa interessante: quando nós retuitamos algo, desconsiderando QRTs, o Twitter oficialmente grava isso com o seguinte texto `RT @[HANDLE]: [TEXTO]`. Assim, nós conseguimos saber exatamente quanto dos meus posts se encaixam nesse critério:
+
+```{r rts-and-qrts}
+tweets %>%
+  tidyr::unnest(tweet.entities.urls, keep_empty = TRUE) %>%
+  mutate(rt_qrt = case_when(
+    stringr::str_detect(tweet.full_text,"RT @") ~ "RT",
+    !(stringr::str_detect(tweet.full_text,"RT @")) & !(is.na(url)) ~ "QRT",
+    TRUE ~ "Normal"
+  )) %>%
+  group_by(rt_qrt) %>%
+  summarise(num = n()) %>%
+  mutate(freq = num/sum(num),
+         ymax = cumsum(freq),
+         ymin = c(0, head(ymax, n=-1)),
+         labelPos = (ymax+ymin)/2) %>%
+  ggplot(data = ., mapping = aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 3, fill = rt_qrt)) +
+  geom_rect() +
+  geom_label( x=3.5, aes(y=labelPos, label=scales::percent(round(freq, digits = 3)))) +
+  coord_polar(theta = "y") +
+  xlim(c(2,4)) +
+  theme_void() +
+  labs(title = "Relação entre Tweets, RTs e QRTs") 
+
+
+```
+
+
+## Ay como interage!
+
+Mas chega de falar sobre meus padrões de postagem. Está na hora de entender as verdadeiras questões: com quem eu estou interagindo? Como meus seguidores estão interagindo comigo? Existe sentido nisso?
+
+A primeira coisa que vamos averiguar é quantas vezes meus tweets foram curtidos e retweetados. Com isso, poderemos ter uma taxa média de interação de outras pessoas com minhas publicações.
+
+```{r like-and-rt}
+sum_likes <- sum(strtoi(tweets$tweet.favorite_count))
+sum_rts <- sum(strtoi(tweets$tweet.retweet_count))
+
+```
+
+No geral, meus tweets recebem `r round(sum_likes/n_tweets, digits = 2)` likes e `r round(sum_rts/n_tweets, digits = 2)` Re-Tweets! É interessante, no entanto, notar alguns pontos: em geral, likes são bem mais comuns do que RTs; meu perfil é privado, o que desabilita a possibilidade de RTs através de formas comuns; e eu não sou tão interessante assim.
+
+Infelizmente, o data dump do Twitter não apresenta as informações de quem curtiu seus tweets, e embora ele traga uma lista de todos os posts que você já curtiu (questionável, na verdade), ela somente trás o ID do tweet, e não o nome do usuário. Sem o nome, precisaríamos do API, que está fora de cogitação.
+
+Mas uma medida de interação que podemos fazer é entender com quem eu interajo através das menções. A forma mais simples é simplesmente ver com quem eu mais converso:
+
+```{r screen-name-mention}
+tweets %>%
+  tidyr::unnest(.,tweet.entities.user_mentions) %>%
+  filter(!is.na(tweet.in_reply_to_screen_name)) %>% # Sem esse, inclui os RTs
+  filter(screen_name != "NathanaelRolim") %>%
+  group_by(screen_name) %>%
+  summarise(num = n()) %>%
+  mutate(freq = num/sum(num)) %>%
+  arrange(desc(num)) %>%
+  head(n = 10) %>%
+  mutate(screen_name = paste0("@",screen_name)) %>%
+  ggplot(data = ., aes(x = reorder(screen_name, freq), y = freq, label = scales::percent(round(freq, digits = 3)))) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(nudge_y= -.01, color="white",) +
+  coord_flip() +
+  xlab("Perfil") + ylab("Porcentagem de Menções") +
+  labs(title = "De quem eu sou mais fã ❤️") +
+  scale_fill_viridis_c() +
+  theme_minimal()
+```
+
+Meu queridíssimo amigo Juan é o primeiro lugar disparado, com quase 20% de todas as minhas menções! Isso com certeza me faz o maior fã do Juan neste planeta, possivelmente nesta galáxia toda. Em segundo lugar está meu amadíssimo Balba, que ████████████ ███ ██ ██████████ ███ ██ █████, ████ ███ ██ █████ ██ ██████ █████ ████. [Removido por decisão judicial]
+
+Em terceiríssimo lugar, meu grande amigo André, com quem eu compartilho meu único neurônio restante e em quem eu deposito toda a minha esperança para o futuro. Um dia, eu confio, o André irá me sustentar e eu nunca mais precisarei fazer um esforço na vida.
+
+Além dessas interações com meus queridíssimos amigos, no entanto, há outro tipo de interação que vale a pena mencionar: as interações comigo mesmo! Nesse caso, há dois tipos possíveis de menções: respostas a outros tweets meus - o que indica uma *thread* - e QRTs (normalmente eu me dou um QRT quando preciso retomar alguma coisa que eu disse há algum tempo e adicionar uma nova informação).
+
+```{r me-myself-i}
+n_myself <- tweets %>%
+  filter(tweet.in_reply_to_screen_name == "NathanaelRolim") %>%
+  nrow()
+```
+
+No geral, eu apenas conversei em thread comigo mesmo `r n_myself` vezes, um número bem desapontante, se você me perguntar. Eu converso comigo em voz alta o tempo todo, como pode eu não fazer isso mais vezes no Twitter?
+
+E no geral é isso. Com certeza tem mais algumas coisas que eu consigo extrair desses dados, mas estou com muita preguiça.
+
+Se você chegou até aqui: 👍
